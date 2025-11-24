@@ -509,6 +509,82 @@ function encodeBase64(str) {
     }
 }
 
+// 고유 ID 생성
+function generateShareId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
+// 로컬 스토리지에 데이터 저장
+function saveToLocalStorage(key, data) {
+    try {
+        const jsonString = JSON.stringify(data);
+        localStorage.setItem(key, jsonString);
+        console.log('로컬 스토리지에 저장 완료, 키:', key, '크기:', jsonString.length);
+        return true;
+    } catch (e) {
+        console.error('로컬 스토리지 저장 오류:', e);
+        // 저장소 가득 참 오류 처리
+        if (e.name === 'QuotaExceededError') {
+            // 오래된 데이터 정리
+            clearOldSharedData();
+            try {
+                localStorage.setItem(key, JSON.stringify(data));
+                return true;
+            } catch (e2) {
+                throw new Error('저장소 공간이 부족합니다. 오래된 데이터를 삭제해주세요.');
+            }
+        }
+        throw e;
+    }
+}
+
+// 로컬 스토리지에서 데이터 가져오기
+function getFromLocalStorage(key) {
+    try {
+        const data = localStorage.getItem(key);
+        if (!data) return null;
+        return JSON.parse(data);
+    } catch (e) {
+        console.error('로컬 스토리지 읽기 오류:', e);
+        return null;
+    }
+}
+
+// 오래된 공유 데이터 정리 (7일 이상 된 데이터)
+function clearOldSharedData() {
+    try {
+        const now = Date.now();
+        const keys = Object.keys(localStorage);
+        let cleared = 0;
+        
+        keys.forEach(key => {
+            if (key.startsWith('share_')) {
+                try {
+                    const data = JSON.parse(localStorage.getItem(key));
+                    if (data && data.timestamp) {
+                        const age = now - data.timestamp;
+                        const sevenDays = 7 * 24 * 60 * 60 * 1000;
+                        if (age > sevenDays) {
+                            localStorage.removeItem(key);
+                            cleared++;
+                        }
+                    }
+                } catch (e) {
+                    // 잘못된 데이터 삭제
+                    localStorage.removeItem(key);
+                    cleared++;
+                }
+            }
+        });
+        
+        if (cleared > 0) {
+            console.log('오래된 공유 데이터', cleared, '개 삭제됨');
+        }
+    } catch (e) {
+        console.error('데이터 정리 오류:', e);
+    }
+}
+
 // 링크 공유
 function shareReport() {
     try {
@@ -525,7 +601,7 @@ function shareReport() {
             return;
         }
         
-        // 항상 전체 데이터 포함 (최대한 압축)
+        // 공유할 데이터 준비
         const dataToShare = {
             month: monthText,
             salesData: monthData.map(d => ({
@@ -536,47 +612,27 @@ function shareReport() {
             })),
             reportText: reportText,
             currentMonth: currentMonth,
-            currentYear: currentYear
+            currentYear: currentYear,
+            timestamp: Date.now()
         };
 
-        // JSON 문자열화
-        let jsonString;
+        // 고유 ID 생성
+        const shareId = generateShareId();
+        const storageKey = 'share_' + shareId;
+        
+        // 로컬 스토리지에 저장
         try {
-            jsonString = JSON.stringify(dataToShare);
+            saveToLocalStorage(storageKey, dataToShare);
         } catch (e) {
-            throw new Error('데이터를 변환하는 중 오류가 발생했습니다.');
+            alert('데이터 저장 중 오류가 발생했습니다.\n\n' + e.message);
+            return;
         }
-
-        // Base64 인코딩
-        let encoded;
-        try {
-            encoded = encodeBase64(jsonString);
-        } catch (e) {
-            throw new Error('링크 인코딩 중 오류가 발생했습니다.');
-        }
-
+        
+        // 짧은 링크 생성 (ID만 포함)
         const baseUrl = window.location.href.split('?')[0];
-        // Base64 문자열을 URL 안전하게 인코딩
-        const urlSafeEncoded = encodeURIComponent(encoded);
-        const url = baseUrl + '?data=' + urlSafeEncoded;
+        const url = baseUrl + '?id=' + shareId;
         
-        // URL 길이 체크 (일반적으로 브라우저는 2048자 제한)
-        if (url.length > 2000) {
-            // URL이 너무 길면 경고 표시하고 계속 진행 (전체 데이터 포함)
-            const continueLink = confirm(
-                `⚠️ 링크 길이 안내\n\n` +
-                `생성된 링크가 ${url.length.toLocaleString('ko-KR')}자입니다.\n\n` +
-                `일반적으로 링크 공유에는 문제가 없지만,\n` +
-                `일부 메신저나 이메일에서는 링크가 잘릴 수 있습니다.\n\n` +
-                `전체 대시보드 데이터가 포함된 링크를 생성하시겠습니까?`
-            );
-            
-            if (!continueLink) {
-                return;
-            }
-        }
-        
-        console.log('링크 생성 완료:', url.substring(0, 100) + '...');
+        console.log('링크 생성 완료, ID:', shareId, 'URL:', url);
         
         // Web Share API 지원 여부 확인
         if (navigator.share && typeof navigator.share === 'function') {
@@ -949,64 +1005,9 @@ function decodeBase64(str) {
     }
 }
 
-// URL 파라미터에서 데이터 로드
-window.addEventListener('load', () => {
-    // DOM이 완전히 로드될 때까지 대기
-    setTimeout(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const dataParam = urlParams.get('data');
-        
-        if (!dataParam) {
-            console.log('링크에 데이터 파라미터가 없습니다.');
-            return;
-        }
-        
-        console.log('링크에서 데이터 로드 시작...');
-        console.log('데이터 파라미터 길이:', dataParam.length);
-        console.log('데이터 파라미터 처음 100자:', dataParam.substring(0, 100));
-        
-        try {
-            // Base64 디코딩
-            let decoded;
-            try {
-                console.log('디코딩 시작, 입력 데이터 길이:', dataParam.length);
-                console.log('입력 데이터 처음 100자:', dataParam.substring(0, 100));
-                
-                decoded = decodeBase64(dataParam);
-                
-                console.log('디코딩 성공, 데이터 길이:', decoded.length);
-                console.log('디코딩된 데이터 처음 200자:', decoded.substring(0, 200));
-                
-                // JSON 형식인지 확인
-                const trimmed = decoded.trim();
-                if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-                    throw new Error('디코딩된 데이터가 JSON 형식이 아닙니다. 첫 글자: ' + trimmed.substring(0, 10));
-                }
-            } catch (decodeError) {
-                console.error('디코딩 오류:', decodeError);
-                console.error('오류 이름:', decodeError.name);
-                console.error('오류 메시지:', decodeError.message);
-                console.error('오류 스택:', decodeError.stack);
-                alert('링크 데이터를 디코딩할 수 없습니다.\n\n오류: ' + decodeError.message + '\n\n브라우저 콘솔(F12)에서 자세한 정보를 확인하세요.');
-                return;
-            }
-            
-            // JSON 파싱
-            let data;
-            try {
-                // JSON 문자열 정리 (앞뒤 공백 제거)
-                const cleanedDecoded = decoded.trim();
-                data = JSON.parse(cleanedDecoded);
-                console.log('JSON 파싱 성공');
-                console.log('데이터 키:', Object.keys(data));
-                console.log('salesData 개수:', data.salesData ? data.salesData.length : 0);
-            } catch (parseError) {
-                console.error('JSON 파싱 오류:', parseError);
-                console.error('파싱 실패한 데이터:', decoded.substring(0, 500));
-                alert('링크 데이터를 읽을 수 없습니다.\n\n오류: ' + parseError.message + '\n\n데이터 형식이 올바르지 않을 수 있습니다.\n브라우저 콘솔(F12)에서 자세한 정보를 확인하세요.');
-                return;
-            }
-        
+// 공유 데이터 로드 (ID 또는 직접 데이터)
+function loadSharedData(data) {
+    try {
         // 월 정보 설정
         if (data.currentMonth && data.currentYear) {
             currentMonth = parseInt(data.currentMonth);
@@ -1035,15 +1036,7 @@ window.addEventListener('load', () => {
                 
                 try {
                     // 날짜 파싱
-                    let date;
-                    if (item.date instanceof String || typeof item.date === 'string') {
-                        date = new Date(item.date);
-                    } else if (item.date) {
-                        date = new Date(item.date);
-                    } else {
-                        console.warn('날짜 정보가 없는 항목:', item);
-                        continue;
-                    }
+                    const date = new Date(item.date);
                     
                     // 유효한 날짜인지 확인
                     if (isNaN(date.getTime())) {
@@ -1081,51 +1074,86 @@ window.addEventListener('load', () => {
             } else {
                 throw new Error('로드된 데이터가 없습니다.');
             }
-        } else if (data.summary) {
-            // 요약 정보만 있는 경우 (구버전 링크 호환성)
-            console.log('요약 정보만 포함된 링크');
-            const categoryTotals = {
-                '맑은이러닝': data.summary.맑은이러닝 || 0,
-                '콘텐츠': data.summary.콘텐츠 || 0,
-                '위캔디오': data.summary.위캔디오 || 0
-            };
-            
-            // 요약 정보를 이용해 대시보드 업데이트
-            const total = data.summary.합계 || 0;
-            
-            // 요약 정보 표시
-            document.getElementById('currentMonthTotal').textContent = formatCurrency(total);
-            updateSummaryCards(categoryTotals, total);
-            
-            // 주차별 테이블은 비우기
-            document.getElementById('weeklyTableBody').innerHTML = 
-                '<tr><td colspan="5" class="no-data">상세 데이터가 포함되지 않은 링크입니다</td></tr>';
-            
-            alert(`${data.month || monthText} 매출 통계 요약 정보입니다.\n\n맑은이러닝: ${formatCurrency(data.summary.맑은이러닝)}\n콘텐츠: ${formatCurrency(data.summary.콘텐츠)}\n위캔디오: ${formatCurrency(data.summary.위캔디오)}\n합계: ${formatCurrency(data.summary.합계)}`);
         } else {
-            console.warn('링크에 매출 데이터 또는 요약 정보가 없습니다.');
-            alert('링크에 매출 데이터가 포함되어 있지 않습니다.\n\n데이터 형식이 올바르지 않을 수 있습니다.');
+            throw new Error('매출 데이터가 포함되어 있지 않습니다.');
+        }
+    } catch (e) {
+        console.error('데이터 로드 오류:', e);
+        throw e;
+    }
+}
+
+// URL 파라미터에서 데이터 로드
+window.addEventListener('load', () => {
+    // DOM이 완전히 로드될 때까지 대기
+    setTimeout(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // 새로운 방식: ID로 로컬 스토리지에서 로드
+        const shareId = urlParams.get('id');
+        if (shareId) {
+            console.log('공유 ID로 데이터 로드:', shareId);
+            const storageKey = 'share_' + shareId;
+            const sharedData = getFromLocalStorage(storageKey);
+            
+            if (sharedData) {
+                try {
+                    loadSharedData(sharedData);
+                    console.log('공유 데이터 로드 성공');
+                } catch (e) {
+                    console.error('공유 데이터 로드 오류:', e);
+                    alert('공유된 데이터를 불러오는 중 오류가 발생했습니다.\n\n오류: ' + e.message);
+                }
+            } else {
+                alert('공유된 데이터를 찾을 수 없습니다.\n\n링크가 만료되었거나 삭제되었을 수 있습니다.');
+            }
             return;
         }
-        } catch (e) {
-            console.error('데이터 로드 전체 오류:', e);
-            console.error('오류 이름:', e.name);
-            console.error('오류 메시지:', e.message);
-            console.error('오류 스택:', e.stack);
+        
+        // 구버전 호환: 직접 데이터 파라미터
+        const dataParam = urlParams.get('data');
+        if (dataParam) {
+            console.log('링크에서 직접 데이터 로드 시작...');
+            console.log('데이터 파라미터 길이:', dataParam.length);
             
-            let errorMessage = '링크에서 데이터를 불러오는 중 오류가 발생했습니다.\n\n';
-            
-            if (e.message) {
-                errorMessage += '오류 내용: ' + e.message + '\n';
+            try {
+                // Base64 디코딩
+                let decoded;
+                try {
+                    decoded = decodeBase64(dataParam);
+                    
+                    // JSON 형식인지 확인
+                    const trimmed = decoded.trim();
+                    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+                        throw new Error('디코딩된 데이터가 JSON 형식이 아닙니다.');
+                    }
+                } catch (decodeError) {
+                    console.error('디코딩 오류:', decodeError);
+                    alert('링크 데이터를 디코딩할 수 없습니다.\n\n오류: ' + decodeError.message);
+                    return;
+                }
+                
+                // JSON 파싱
+                let data;
+                try {
+                    data = JSON.parse(decoded.trim());
+                    console.log('JSON 파싱 성공');
+                } catch (parseError) {
+                    console.error('JSON 파싱 오류:', parseError);
+                    alert('링크 데이터를 읽을 수 없습니다.\n\n오류: ' + parseError.message);
+                    return;
+                }
+                
+                // 데이터 로드
+                try {
+                    loadSharedData(data);
+                } catch (e) {
+                    alert('데이터를 불러오는 중 오류가 발생했습니다.\n\n오류: ' + e.message);
+                }
+            } catch (e) {
+                console.error('데이터 로드 전체 오류:', e);
+                alert('링크에서 데이터를 불러오는 중 오류가 발생했습니다.\n\n오류: ' + (e.message || e.toString()));
             }
-            
-            if (e.name) {
-                errorMessage += '오류 유형: ' + e.name + '\n';
-            }
-            
-            errorMessage += '\n브라우저 콘솔(F12)을 열어 자세한 오류 정보를 확인하세요.';
-            
-            alert(errorMessage);
         }
     }, 100);
 });
