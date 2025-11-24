@@ -493,90 +493,133 @@ function formatCurrency(amount) {
 
 // 링크 공유
 function shareReport() {
-    if (salesData.length === 0) {
-        alert('공유할 데이터가 없습니다. 파일을 업로드해주세요.');
-        return;
-    }
-
-    const reportText = document.getElementById('reportText').value;
-    const monthText = `${currentYear}년 ${currentMonth}월`;
-    
-    const data = {
-        month: monthText,
-        salesData: salesData.filter(d => 
+    try {
+        // 데이터 확인 (salesData가 비어있어도 링크는 생성 가능하도록)
+        const reportText = document.getElementById('reportText')?.value || '';
+        const monthText = `${currentYear}년 ${currentMonth}월`;
+        
+        const monthData = salesData.filter(d => 
             d.year === currentYear && d.month === currentMonth
-        ),
-        reportText: reportText,
-        currentMonth: currentMonth,
-        currentYear: currentYear
-    };
+        );
+        
+        const data = {
+            month: monthText,
+            salesData: monthData,
+            reportText: reportText,
+            currentMonth: currentMonth,
+            currentYear: currentYear
+        };
 
-    const encoded = btoa(JSON.stringify(data));
-    const url = window.location.href.split('?')[0] + '?data=' + encoded;
-    
-    // Web Share API 지원 여부 확인 (모바일/일부 데스크톱)
-    if (navigator.share) {
-        navigator.share({
-            title: `매출 통계 보고서 - ${monthText}`,
-            text: `매출 통계 보고서를 공유합니다: ${monthText}`,
-            url: url
-        }).catch((error) => {
-            console.log('공유 취소 또는 오류:', error);
+        const encoded = btoa(JSON.stringify(data));
+        const baseUrl = window.location.href.split('?')[0];
+        const url = baseUrl + '?data=' + encoded;
+        
+        console.log('링크 생성 완료:', url);
+        
+        // Web Share API 지원 여부 확인 (모바일/일부 데스크톱)
+        if (navigator.share && navigator.share instanceof Function) {
+            navigator.share({
+                title: `매출 통계 보고서 - ${monthText}`,
+                text: `매출 통계 보고서를 공유합니다: ${monthText}`,
+                url: url
+            }).catch((error) => {
+                console.log('공유 취소 또는 오류:', error);
+                // 취소나 오류 시 모달 표시
+                showShareModal(url, monthText);
+            });
+        } else {
+            // Web Share API를 지원하지 않는 경우 모달 표시
             showShareModal(url, monthText);
-        });
-    } else {
-        // Web Share API를 지원하지 않는 경우 모달 표시
-        showShareModal(url, monthText);
+        }
+    } catch (error) {
+        console.error('링크 공유 오류:', error);
+        alert('링크 생성 중 오류가 발생했습니다: ' + error.message);
     }
 }
 
 // 링크 공유 모달 표시
 function showShareModal(url, monthText) {
+    console.log('모달 표시 시작:', url);
+    
     // 기존 모달이 있으면 제거
     const existingModal = document.getElementById('shareModal');
     if (existingModal) {
         existingModal.remove();
     }
 
-    // 모달 생성
-    const modal = document.createElement('div');
-    modal.id = 'shareModal';
-    modal.innerHTML = `
-        <div class="modal-overlay" onclick="closeShareModal()">
-            <div class="modal-content" onclick="event.stopPropagation()">
-                <div class="modal-header">
-                    <h2>🔗 링크 공유</h2>
-                    <button class="modal-close" onclick="closeShareModal()">×</button>
-                </div>
-                <div class="modal-body">
-                    <p style="margin-bottom: 15px; color: #666;">
-                        <strong>${monthText}</strong> 매출 통계 보고서를 공유할 수 있는 링크입니다.
-                    </p>
-                    <div class="share-url-container">
-                        <input type="text" id="shareUrlInput" value="${url}" readonly class="share-url-input">
-                        <button id="copyUrlBtn" class="btn-copy" onclick="copyShareUrl()">복사</button>
-                    </div>
-                    <div id="copySuccess" class="copy-success" style="display: none;">
-                        ✓ 링크가 클립보드에 복사되었습니다!
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-primary" onclick="copyShareUrl()">링크 복사</button>
-                    <button class="btn btn-secondary" onclick="closeShareModal()">닫기</button>
-                </div>
+    // 모달 오버레이 생성
+    const overlay = document.createElement('div');
+    overlay.id = 'shareModal';
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; background: rgba(0, 0, 0, 0.5) !important; display: flex !important; justify-content: center !important; align-items: center !important; z-index: 99999 !important;';
+    
+    // 모달 콘텐츠 생성
+    const content = document.createElement('div');
+    content.className = 'modal-content';
+    content.style.cssText = 'background: white !important; border-radius: 15px !important; width: 90% !important; max-width: 500px !important; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3) !important;';
+    
+    content.innerHTML = `
+        <div class="modal-header">
+            <h2>🔗 링크 공유</h2>
+            <button class="modal-close" id="modalCloseBtn">×</button>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom: 15px; color: #666;">
+                <strong>${monthText}</strong> 매출 통계 보고서를 공유할 수 있는 링크입니다.
+            </p>
+            <div class="share-url-container">
+                <input type="text" id="shareUrlInput" value="${url}" readonly class="share-url-input">
+                <button id="copyUrlBtn" class="btn-copy">복사</button>
             </div>
+            <div id="copySuccess" class="copy-success" style="display: none;">
+                ✓ 링크가 클립보드에 복사되었습니다!
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="copyUrlBtn2">링크 복사</button>
+            <button class="btn btn-secondary" id="closeModalBtn">닫기</button>
         </div>
     `;
     
-    document.body.appendChild(modal);
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
     
-    // URL 입력 필드 자동 선택
+    console.log('모달 DOM 추가 완료');
+    
+    // 이벤트 리스너 추가
     setTimeout(() => {
+        const closeBtn = document.getElementById('modalCloseBtn');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const copyBtn = document.getElementById('copyUrlBtn');
+        const copyBtn2 = document.getElementById('copyUrlBtn2');
+        
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeShareModal);
+        }
+        if (closeModalBtn) {
+            closeModalBtn.addEventListener('click', closeShareModal);
+        }
+        if (copyBtn) {
+            copyBtn.addEventListener('click', copyShareUrl);
+        }
+        if (copyBtn2) {
+            copyBtn2.addEventListener('click', copyShareUrl);
+        }
+        
+        // 오버레이 클릭 시 모달 닫기
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeShareModal();
+            }
+        });
+        
+        // URL 입력 필드 자동 선택
         const urlInput = document.getElementById('shareUrlInput');
         if (urlInput) {
             urlInput.select();
+            urlInput.focus();
         }
-    }, 100);
+    }, 50);
 }
 
 // 링크 복사
@@ -616,6 +659,7 @@ function closeShareModal() {
     const modal = document.getElementById('shareModal');
     if (modal) {
         modal.remove();
+        console.log('모달 닫기 완료');
     }
 }
 
