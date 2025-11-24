@@ -513,42 +513,24 @@ function shareReport() {
             d.year === currentYear && d.month === currentMonth
         );
         
-        // 데이터가 너무 크면 요약만 포함
-        let dataToShare;
-        
-        if (monthData.length > 100) {
-            // 데이터가 많으면 요약 정보만 포함
-            const categoryTotals = calculateCategoryTotals(monthData);
-            const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
-            
-            dataToShare = {
-                month: monthText,
-                summary: {
-                    맑은이러닝: categoryTotals['맑은이러닝'] || 0,
-                    콘텐츠: categoryTotals['콘텐츠'] || 0,
-                    위캔디오: categoryTotals['위캔디오'] || 0,
-                    합계: total
-                },
-                reportText: reportText,
-                currentMonth: currentMonth,
-                currentYear: currentYear,
-                dataCount: monthData.length
-            };
-        } else {
-            // 데이터가 적으면 전체 포함
-            dataToShare = {
-                month: monthText,
-                salesData: monthData.map(d => ({
-                    date: d.date.toISOString().split('T')[0],
-                    category: d.category,
-                    amount: d.amount,
-                    itemName: d.itemName || d.company
-                })),
-                reportText: reportText,
-                currentMonth: currentMonth,
-                currentYear: currentYear
-            };
+        if (monthData.length === 0) {
+            alert('공유할 데이터가 없습니다.');
+            return;
         }
+        
+        // 항상 전체 데이터 포함 (최대한 압축)
+        const dataToShare = {
+            month: monthText,
+            salesData: monthData.map(d => ({
+                date: d.date.toISOString().split('T')[0],
+                category: d.category,
+                amount: d.amount,
+                itemName: d.itemName || d.company || ''
+            })),
+            reportText: reportText,
+            currentMonth: currentMonth,
+            currentYear: currentYear
+        };
 
         // JSON 문자열화
         let jsonString;
@@ -571,32 +553,8 @@ function shareReport() {
         
         // URL 길이 체크 (일반적으로 브라우저는 2048자 제한)
         if (url.length > 2000) {
-            // URL이 너무 길면 경고 표시
-            if (confirm('링크가 너무 깁니다. 요약 정보만 포함된 링크를 생성하시겠습니까?')) {
-                // 요약 정보만으로 다시 생성
-                const categoryTotals = calculateCategoryTotals(monthData);
-                const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
-                
-                const summaryData = {
-                    month: monthText,
-                    summary: {
-                        맑은이러닝: categoryTotals['맑은이러닝'] || 0,
-                        콘텐츠: categoryTotals['콘텐츠'] || 0,
-                        위캔디오: categoryTotals['위캔디오'] || 0,
-                        합계: total
-                    },
-                    reportText: reportText.substring(0, 500), // 보고서도 제한
-                    currentMonth: currentMonth,
-                    currentYear: currentYear
-                };
-                
-                const summaryJson = JSON.stringify(summaryData);
-                const summaryEncoded = encodeBase64(summaryJson);
-                const summaryUrl = baseUrl + '?data=' + summaryEncoded;
-                
-                showShareModal(summaryUrl, monthText);
-                return;
-            } else {
+            // URL이 너무 길면 경고 표시하고 계속 진행 (전체 데이터 포함)
+            if (!confirm(`링크가 ${url.length}자로 매우 깁니다.\n일부 브라우저에서 문제가 발생할 수 있습니다.\n그래도 계속하시겠습니까?`)) {
                 return;
             }
         }
@@ -964,19 +922,47 @@ window.addEventListener('load', () => {
             // salesData가 있으면 로드
             if (data.salesData && Array.isArray(data.salesData)) {
                 // 날짜 문자열을 Date 객체로 변환
-                data.salesData.forEach(item => {
-                    if (item.date) {
-                        item.date = new Date(item.date);
-                        item.year = item.date.getFullYear();
-                        item.month = item.date.getMonth() + 1;
-                        item.week = getWeekOfMonth(item.date);
-                    }
+                const loadedData = data.salesData.map(item => {
+                    const date = new Date(item.date);
+                    return {
+                        date: date,
+                        year: date.getFullYear(),
+                        month: date.getMonth() + 1,
+                        week: getWeekOfMonth(date),
+                        company: item.itemName || item.company || '',
+                        itemName: item.itemName || item.company || '',
+                        category: item.category || '기타',
+                        amount: item.amount || 0
+                    };
                 });
-                salesData = data.salesData;
+                
+                // 기존 데이터에 추가 (같은 월 데이터가 있으면 교체)
+                salesData = salesData.filter(d => 
+                    !(d.year === currentYear && d.month === currentMonth)
+                );
+                salesData = salesData.concat(loadedData);
+                
                 updateDashboard();
             } else if (data.summary) {
-                // 요약 정보만 있는 경우 메시지 표시
-                alert(`${data.month} 매출 통계 요약 정보만 포함된 링크입니다.\n\n맑은이러닝: ${formatCurrency(data.summary.맑은이러닝)}\n콘텐츠: ${formatCurrency(data.summary.콘텐츠)}\n위캔디오: ${formatCurrency(data.summary.위캔디오)}\n합계: ${formatCurrency(data.summary.합계)}`);
+                // 요약 정보만 있는 경우 (구버전 링크 호환성)
+                const categoryTotals = {
+                    '맑은이러닝': data.summary.맑은이러닝 || 0,
+                    '콘텐츠': data.summary.콘텐츠 || 0,
+                    '위캔디오': data.summary.위캔디오 || 0
+                };
+                
+                // 요약 정보를 이용해 대시보드 업데이트 (데이터는 없지만 요약은 표시)
+                const total = data.summary.합계 || 0;
+                
+                // 요약 정보 표시
+                document.getElementById('currentMonthTotal').textContent = formatCurrency(total);
+                updateSummaryCards(categoryTotals, total);
+                
+                // 주차별 테이블은 비우기
+                document.getElementById('weeklyTableBody').innerHTML = 
+                    '<tr><td colspan="5" class="no-data">상세 데이터가 포함되지 않은 링크입니다</td></tr>';
+                
+                alert(`${data.month} 매출 통계 요약 정보입니다.\n\n맑은이러닝: ${formatCurrency(data.summary.맑은이러닝)}\n콘텐츠: ${formatCurrency(data.summary.콘텐츠)}\n위캔디오: ${formatCurrency(data.summary.위캔디오)}\n합계: ${formatCurrency(data.summary.합계)}`);
             }
         } catch (e) {
             console.error('데이터 로드 오류:', e);
