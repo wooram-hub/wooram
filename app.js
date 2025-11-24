@@ -517,63 +517,205 @@ function shareReport() {
 }
 
 // PDF 출력
-function exportToPDF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    
+async function exportToPDF() {
     const monthText = `${currentYear}년 ${currentMonth}월`;
     const reportText = document.getElementById('reportText').value;
     
-    // 제목
-    doc.setFontSize(20);
-    doc.text('매출 통계 보고서', 105, 20, { align: 'center' });
-    
-    doc.setFontSize(14);
-    doc.text(monthText, 105, 30, { align: 'center' });
-    
-    let y = 45;
-    
-    // 카테고리별 요약
-    doc.setFontSize(12);
-    doc.text('카테고리별 매출', 20, y);
-    y += 10;
-    
+    // PDF용 HTML 생성
     const monthData = salesData.filter(d => 
         d.year === currentYear && d.month === currentMonth
     );
     const categoryTotals = calculateCategoryTotals(monthData);
     const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
     
-    ['맑은이러닝', '콘텐츠', '위캔디오'].forEach((category, index) => {
-        const amount = categoryTotals[category] || 0;
-        const percent = total > 0 ? ((amount / total) * 100).toFixed(1) : 0;
-        doc.text(`${category}: ${formatCurrency(amount)} (${percent}%)`, 25, y);
-        y += 7;
-    });
+    let pdfHTML = `
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {
+                    font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
+                    padding: 40px;
+                    color: #333;
+                }
+                h1 {
+                    text-align: center;
+                    font-size: 24px;
+                    margin-bottom: 10px;
+                    color: #667eea;
+                }
+                h2 {
+                    text-align: center;
+                    font-size: 18px;
+                    margin-bottom: 30px;
+                    color: #666;
+                }
+                .section {
+                    margin-bottom: 30px;
+                }
+                .section-title {
+                    font-size: 16px;
+                    font-weight: bold;
+                    margin-bottom: 15px;
+                    color: #333;
+                    border-bottom: 2px solid #667eea;
+                    padding-bottom: 5px;
+                }
+                .category-item {
+                    margin: 10px 0;
+                    padding: 8px;
+                    background: #f8f9fa;
+                    border-radius: 5px;
+                }
+                .category-item strong {
+                    color: #667eea;
+                }
+                .total {
+                    margin-top: 15px;
+                    padding: 15px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border-radius: 8px;
+                    font-size: 18px;
+                    font-weight: bold;
+                    text-align: center;
+                }
+                .report-content {
+                    margin-top: 20px;
+                    padding: 20px;
+                    background: #f8f9fa;
+                    border-radius: 8px;
+                    white-space: pre-wrap;
+                    line-height: 1.6;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 15px;
+                }
+                th, td {
+                    padding: 10px;
+                    text-align: left;
+                    border-bottom: 1px solid #ddd;
+                }
+                th {
+                    background: #667eea;
+                    color: white;
+                }
+                tr:hover {
+                    background: #f5f5f5;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>📊 매출 통계 보고서</h1>
+            <h2>${monthText}</h2>
+            
+            <div class="section">
+                <div class="section-title">카테고리별 매출</div>
+                <div class="category-item">
+                    <strong>맑은이러닝:</strong> ${formatCurrency(categoryTotals['맑은이러닝'] || 0)} 
+                    (${total > 0 ? ((categoryTotals['맑은이러닝'] || 0) / total * 100).toFixed(1) : 0}%)
+                </div>
+                <div class="category-item">
+                    <strong>콘텐츠:</strong> ${formatCurrency(categoryTotals['콘텐츠'] || 0)} 
+                    (${total > 0 ? ((categoryTotals['콘텐츠'] || 0) / total * 100).toFixed(1) : 0}%)
+                </div>
+                <div class="category-item">
+                    <strong>위캔디오:</strong> ${formatCurrency(categoryTotals['위캔디오'] || 0)} 
+                    (${total > 0 ? ((categoryTotals['위캔디오'] || 0) / total * 100).toFixed(1) : 0}%)
+                </div>
+                <div class="total">합계: ${formatCurrency(total)}</div>
+            </div>
+    `;
     
-    doc.text(`합계: ${formatCurrency(total)}`, 25, y);
-    y += 15;
+    // 주차별 상세 테이블 추가
+    const weeklyData = calculateWeeklyData(monthData);
+    const weeks = Object.keys(weeklyData).sort((a, b) => a - b);
+    if (weeks.length > 0) {
+        pdfHTML += `
+            <div class="section">
+                <div class="section-title">주차별 상세 내역</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>주차</th>
+                            <th>맑은이러닝</th>
+                            <th>콘텐츠</th>
+                            <th>위캔디오</th>
+                            <th>합계</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        weeks.forEach(week => {
+            const weekData = weeklyData[week];
+            const weekTotal = (weekData['맑은이러닝'] || 0) + (weekData['콘텐츠'] || 0) + (weekData['위캔디오'] || 0);
+            pdfHTML += `
+                        <tr>
+                            <td><strong>${week}주차</strong></td>
+                            <td>${formatCurrency(weekData['맑은이러닝'] || 0)}</td>
+                            <td>${formatCurrency(weekData['콘텐츠'] || 0)}</td>
+                            <td>${formatCurrency(weekData['위캔디오'] || 0)}</td>
+                            <td><strong>${formatCurrency(weekTotal)}</strong></td>
+                        </tr>
+            `;
+        });
+        pdfHTML += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
     
-    // 보고서 내용
+    // 보고서 내용 추가
     if (reportText) {
-        doc.setFontSize(12);
-        doc.text('보고 내용', 20, y);
-        y += 10;
-        
-        doc.setFontSize(10);
-        const lines = doc.splitTextToSize(reportText, 170);
-        doc.text(lines, 20, y);
-        y += lines.length * 5 + 10;
+        pdfHTML += `
+            <div class="section">
+                <div class="section-title">보고 내용</div>
+                <div class="report-content">${reportText.replace(/\n/g, '<br>')}</div>
+            </div>
+        `;
     }
     
-    // 페이지 나누기
-    if (y > 280) {
-        doc.addPage();
-        y = 20;
-    }
+    pdfHTML += `
+        </body>
+        </html>
+    `;
     
-    // 저장
-    doc.save(`매출통계_${currentYear}년${currentMonth}월.pdf`);
+    // 임시 div 생성
+    const printWindow = document.createElement('div');
+    printWindow.innerHTML = pdfHTML;
+    printWindow.style.position = 'absolute';
+    printWindow.style.left = '-9999px';
+    document.body.appendChild(printWindow);
+    
+    // PDF 생성 옵션
+    const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `매출통계_${currentYear}년${currentMonth}월.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+            scale: 2,
+            useCORS: true,
+            letterRendering: true
+        },
+        jsPDF: { 
+            unit: 'mm', 
+            format: 'a4', 
+            orientation: 'portrait' 
+        }
+    };
+    
+    try {
+        await html2pdf().set(opt).from(printWindow).save();
+        document.body.removeChild(printWindow);
+    } catch (error) {
+        console.error('PDF 생성 오류:', error);
+        alert('PDF 생성 중 오류가 발생했습니다.');
+        document.body.removeChild(printWindow);
+    }
 }
 
 // URL 파라미터에서 데이터 로드
