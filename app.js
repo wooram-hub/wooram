@@ -493,12 +493,19 @@ function formatCurrency(amount) {
 
 // Base64 인코딩 (한글 지원)
 function encodeBase64(str) {
+    if (!str || str.length === 0) {
+        throw new Error('인코딩할 데이터가 없습니다.');
+    }
+    
     try {
         // UTF-8로 인코딩 후 Base64 변환
-        return btoa(unescape(encodeURIComponent(str)));
+        const utf8Encoded = unescape(encodeURIComponent(str));
+        const base64Encoded = btoa(utf8Encoded);
+        return base64Encoded;
     } catch (e) {
-        // 실패 시 encodeURIComponent 사용
-        return encodeURIComponent(str);
+        console.error('Base64 인코딩 오류:', e);
+        // 인코딩 실패 시 예외 발생
+        throw new Error('데이터 인코딩 중 오류가 발생했습니다: ' + e.message);
     }
 }
 
@@ -894,58 +901,84 @@ function decodeBase64(str) {
         throw new Error('디코딩할 데이터가 없습니다.');
     }
     
+    // URL 인코딩된 경우 먼저 디코딩
+    let decodedStr = str;
     try {
-        // Base64 디코딩 후 UTF-8로 변환
-        const decoded = atob(str);
-        return decodeURIComponent(escape(decoded));
+        decodedStr = decodeURIComponent(str);
+    } catch (e) {
+        // 이미 디코딩된 경우 그대로 사용
+        decodedStr = str;
+    }
+    
+    // Base64 문자열 검증 (Base64는 A-Z, a-z, 0-9, +, /, = 만 포함)
+    const base64Pattern = /^[A-Za-z0-9+/=]+$/;
+    if (!base64Pattern.test(decodedStr.replace(/\s/g, ''))) {
+        // Base64가 아니면 그대로 반환 (이미 디코딩된 JSON일 수 있음)
+        return decodedStr;
+    }
+    
+    try {
+        // Base64 디코딩
+        const base64Decoded = atob(decodedStr);
+        // UTF-8로 변환
+        try {
+            return decodeURIComponent(escape(base64Decoded));
+        } catch (e) {
+            // escape가 실패하면 그대로 반환
+            return base64Decoded;
+        }
     } catch (e) {
         console.error('Base64 디코딩 오류:', e);
-        // 실패 시 URL 디코딩된 상태인지 확인
-        try {
-            // 이미 디코딩된 경우
-            return decodeURIComponent(str);
-        } catch (e2) {
-            // 직접 디코딩 시도
-            try {
-                return decodeURIComponent(escape(atob(decodeURIComponent(str))));
-            } catch (e3) {
-                throw new Error('데이터 디코딩 실패: ' + e.message);
-            }
-        }
+        // Base64 디코딩 실패 시 원본 문자열 반환
+        return decodedStr;
     }
 }
 
 // URL 파라미터에서 데이터 로드
 window.addEventListener('load', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const dataParam = urlParams.get('data');
-    
-    if (!dataParam) {
-        return;
-    }
-    
-    try {
+    // DOM이 완전히 로드될 때까지 대기
+    setTimeout(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const dataParam = urlParams.get('data');
+        
+        if (!dataParam) {
+            console.log('링크에 데이터 파라미터가 없습니다.');
+            return;
+        }
+        
         console.log('링크에서 데이터 로드 시작...');
+        console.log('데이터 파라미터 길이:', dataParam.length);
+        console.log('데이터 파라미터 처음 100자:', dataParam.substring(0, 100));
         
-        // Base64 디코딩
-        let decoded;
         try {
-            decoded = decodeBase64(dataParam);
-            console.log('디코딩 성공, 데이터 길이:', decoded.length);
-        } catch (decodeError) {
-            console.error('디코딩 오류:', decodeError);
-            throw new Error('링크 데이터를 디코딩할 수 없습니다.\n\n오류: ' + decodeError.message);
-        }
-        
-        // JSON 파싱
-        let data;
-        try {
-            data = JSON.parse(decoded);
-            console.log('JSON 파싱 성공:', Object.keys(data));
-        } catch (parseError) {
-            console.error('JSON 파싱 오류:', parseError);
-            throw new Error('링크 데이터를 읽을 수 없습니다.\n\n오류: ' + parseError.message);
-        }
+            // Base64 디코딩
+            let decoded;
+            try {
+                decoded = decodeBase64(dataParam);
+                console.log('디코딩 성공, 데이터 길이:', decoded.length);
+                console.log('디코딩된 데이터 처음 200자:', decoded.substring(0, 200));
+            } catch (decodeError) {
+                console.error('디코딩 오류:', decodeError);
+                console.error('오류 스택:', decodeError.stack);
+                alert('링크 데이터를 디코딩할 수 없습니다.\n\n오류: ' + decodeError.message + '\n\n브라우저 콘솔(F12)에서 자세한 정보를 확인하세요.');
+                return;
+            }
+            
+            // JSON 파싱
+            let data;
+            try {
+                // JSON 문자열 정리 (앞뒤 공백 제거)
+                const cleanedDecoded = decoded.trim();
+                data = JSON.parse(cleanedDecoded);
+                console.log('JSON 파싱 성공');
+                console.log('데이터 키:', Object.keys(data));
+                console.log('salesData 개수:', data.salesData ? data.salesData.length : 0);
+            } catch (parseError) {
+                console.error('JSON 파싱 오류:', parseError);
+                console.error('파싱 실패한 데이터:', decoded.substring(0, 500));
+                alert('링크 데이터를 읽을 수 없습니다.\n\n오류: ' + parseError.message + '\n\n데이터 형식이 올바르지 않을 수 있습니다.\n브라우저 콘솔(F12)에서 자세한 정보를 확인하세요.');
+                return;
+            }
         
         // 월 정보 설정
         if (data.currentMonth && data.currentYear) {
@@ -1043,23 +1076,30 @@ window.addEventListener('load', () => {
             
             alert(`${data.month || monthText} 매출 통계 요약 정보입니다.\n\n맑은이러닝: ${formatCurrency(data.summary.맑은이러닝)}\n콘텐츠: ${formatCurrency(data.summary.콘텐츠)}\n위캔디오: ${formatCurrency(data.summary.위캔디오)}\n합계: ${formatCurrency(data.summary.합계)}`);
         } else {
-            throw new Error('링크에 매출 데이터가 포함되어 있지 않습니다.');
+            console.warn('링크에 매출 데이터 또는 요약 정보가 없습니다.');
+            alert('링크에 매출 데이터가 포함되어 있지 않습니다.\n\n데이터 형식이 올바르지 않을 수 있습니다.');
+            return;
         }
-    } catch (e) {
-        console.error('데이터 로드 전체 오류:', e);
-        console.error('오류 스택:', e.stack);
-        
-        let errorMessage = '링크에서 데이터를 불러오는 중 오류가 발생했습니다.\n\n';
-        
-        if (e.message) {
-            errorMessage += '오류 내용: ' + e.message;
-        } else {
-            errorMessage += '알 수 없는 오류가 발생했습니다.';
+        } catch (e) {
+            console.error('데이터 로드 전체 오류:', e);
+            console.error('오류 이름:', e.name);
+            console.error('오류 메시지:', e.message);
+            console.error('오류 스택:', e.stack);
+            
+            let errorMessage = '링크에서 데이터를 불러오는 중 오류가 발생했습니다.\n\n';
+            
+            if (e.message) {
+                errorMessage += '오류 내용: ' + e.message + '\n';
+            }
+            
+            if (e.name) {
+                errorMessage += '오류 유형: ' + e.name + '\n';
+            }
+            
+            errorMessage += '\n브라우저 콘솔(F12)을 열어 자세한 오류 정보를 확인하세요.';
+            
+            alert(errorMessage);
         }
-        
-        errorMessage += '\n\n브라우저 콘솔(F12)에서 자세한 오류 정보를 확인할 수 있습니다.';
-        
-        alert(errorMessage);
-    }
+    }, 100);
 });
 
