@@ -493,6 +493,11 @@ function formatCurrency(amount) {
 
 // 링크 공유
 function shareReport() {
+    if (salesData.length === 0) {
+        alert('공유할 데이터가 없습니다. 파일을 업로드해주세요.');
+        return;
+    }
+
     const reportText = document.getElementById('reportText').value;
     const monthText = `${currentYear}년 ${currentMonth}월`;
     
@@ -509,12 +514,117 @@ function shareReport() {
     const encoded = btoa(JSON.stringify(data));
     const url = window.location.href.split('?')[0] + '?data=' + encoded;
     
-    navigator.clipboard.writeText(url).then(() => {
-        alert('링크가 클립보드에 복사되었습니다!');
-    }).catch(() => {
-        prompt('다음 링크를 복사하세요:', url);
-    });
+    // Web Share API 지원 여부 확인 (모바일/일부 데스크톱)
+    if (navigator.share) {
+        navigator.share({
+            title: `매출 통계 보고서 - ${monthText}`,
+            text: `매출 통계 보고서를 공유합니다: ${monthText}`,
+            url: url
+        }).catch((error) => {
+            console.log('공유 취소 또는 오류:', error);
+            showShareModal(url, monthText);
+        });
+    } else {
+        // Web Share API를 지원하지 않는 경우 모달 표시
+        showShareModal(url, monthText);
+    }
 }
+
+// 링크 공유 모달 표시
+function showShareModal(url, monthText) {
+    // 기존 모달이 있으면 제거
+    const existingModal = document.getElementById('shareModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    // 모달 생성
+    const modal = document.createElement('div');
+    modal.id = 'shareModal';
+    modal.innerHTML = `
+        <div class="modal-overlay" onclick="closeShareModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>🔗 링크 공유</h2>
+                    <button class="modal-close" onclick="closeShareModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom: 15px; color: #666;">
+                        <strong>${monthText}</strong> 매출 통계 보고서를 공유할 수 있는 링크입니다.
+                    </p>
+                    <div class="share-url-container">
+                        <input type="text" id="shareUrlInput" value="${url}" readonly class="share-url-input">
+                        <button id="copyUrlBtn" class="btn-copy" onclick="copyShareUrl()">복사</button>
+                    </div>
+                    <div id="copySuccess" class="copy-success" style="display: none;">
+                        ✓ 링크가 클립보드에 복사되었습니다!
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="copyShareUrl()">링크 복사</button>
+                    <button class="btn btn-secondary" onclick="closeShareModal()">닫기</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // URL 입력 필드 자동 선택
+    setTimeout(() => {
+        const urlInput = document.getElementById('shareUrlInput');
+        if (urlInput) {
+            urlInput.select();
+        }
+    }, 100);
+}
+
+// 링크 복사
+function copyShareUrl() {
+    const urlInput = document.getElementById('shareUrlInput');
+    if (!urlInput) return;
+    
+    urlInput.select();
+    urlInput.setSelectionRange(0, 99999); // 모바일 지원
+    
+    try {
+        document.execCommand('copy');
+        showCopySuccess();
+    } catch (err) {
+        // execCommand 실패 시 Clipboard API 시도
+        navigator.clipboard.writeText(urlInput.value).then(() => {
+            showCopySuccess();
+        }).catch(() => {
+            alert('링크 복사에 실패했습니다. 수동으로 복사해주세요.');
+        });
+    }
+}
+
+// 복사 성공 메시지 표시
+function showCopySuccess() {
+    const successMsg = document.getElementById('copySuccess');
+    if (successMsg) {
+        successMsg.style.display = 'block';
+        setTimeout(() => {
+            successMsg.style.display = 'none';
+        }, 3000);
+    }
+}
+
+// 모달 닫기
+function closeShareModal() {
+    const modal = document.getElementById('shareModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+// ESC 키로 모달 닫기
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeShareModal();
+    }
+});
 
 // PDF 출력
 async function exportToPDF() {
