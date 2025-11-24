@@ -1,0 +1,28 @@
+# 운영체제 파일
+.DS_Store
+Thumbs.db
+
+# IDE 파일
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 로그 파일
+*.log
+npm-debug.log*
+
+# 임시 파일
+*.tmp
+*.temp
+
+# Excel 파일 (민감한 데이터)
+*.xls
+*.xlsx
+*.csv
+
+# 환경 변수
+.env
+.env.local
+

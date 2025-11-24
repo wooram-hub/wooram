@@ -95,6 +95,47 @@ wooram/
 - [ ] 더 많은 차트 타입 옵션
 - [ ] 사용자 설정 (카테고리 매핑 커스터마이징)
 
+## 🚀 배포 및 업데이트
+
+### 자동 배포
+
+프로젝트는 GitHub에 푸시하면 Cloudflare Pages에 자동으로 배포됩니다.
+
+#### 방법 1: PowerShell 스크립트 사용 (권장)
+```powershell
+# 기본 커밋 메시지로 배포
+.\deploy.ps1
+
+# 커스텀 커밋 메시지로 배포
+.\deploy.ps1 "업데이트 내용 설명"
+```
+
+#### 방법 2: 배치 파일 사용
+```cmd
+deploy.bat "업데이트 내용 설명"
+```
+
+#### 방법 3: 수동 배포
+```bash
+git add .
+git commit -m "커밋 메시지"
+git push origin main
+```
+
+### Cloudflare Pages 자동 배포 설정
+
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/)에 로그인
+2. **Workers & Pages** 메뉴로 이동
+3. **Create application** > **Pages** > **Connect to Git** 선택
+4. GitHub 저장소 권한 부여 후 `wooram-hub/wooram` 저장소 선택
+5. 빌드 설정:
+   - **Framework preset**: None
+   - **Build command**: (비워두기)
+   - **Build output directory**: `/` (또는 비워두기)
+6. **Save and Deploy** 클릭
+
+이후 GitHub에 푸시할 때마다 자동으로 배포됩니다!
+
 ## 📝 라이센스
 
 이 프로젝트는 내부 사용 목적으로 제작되었습니다.
