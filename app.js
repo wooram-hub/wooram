@@ -62,7 +62,7 @@ function parseExcelData(workbook) {
         const row = jsonData[i];
         if (row.some(cell => 
             typeof cell === 'string' && 
-            (cell.includes('거래일자') || cell.includes('발행일자') || cell.includes('일자'))
+            (cell.includes('작성일자') || cell.includes('거래일자') || cell.includes('발행일자') || cell.includes('일자'))
         )) {
             headerRow = i;
             break;
@@ -71,22 +71,21 @@ function parseExcelData(workbook) {
 
     const headers = jsonData[headerRow];
     
-    // 필요한 컬럼 인덱스 찾기
+    // 컬럼 인덱스 설정
+    // 작성일자 컬럼 찾기
     const dateCol = headers.findIndex(h => 
         typeof h === 'string' && 
-        (h.includes('거래일자') || h.includes('발행일자') || h.includes('일자') || h.includes('날짜'))
+        (h.includes('작성일자') || h.includes('거래일자') || h.includes('발행일자') || h.includes('일자') || h.includes('날짜'))
     );
-    const companyCol = headers.findIndex(h => 
-        typeof h === 'string' && 
-        (h.includes('거래처') || h.includes('업체') || h.includes('회사') || h.includes('상호'))
-    );
-    const amountCol = headers.findIndex(h => 
-        typeof h === 'string' && 
-        (h.includes('금액') || h.includes('공급가액') || h.includes('매출'))
-    );
+    
+    // P열 = 16번째 열 (인덱스 15) - 금액
+    const amountCol = 15;
+    
+    // AA열 = 27번째 열 (인덱스 26) - 품목명
+    const itemNameCol = 26;
 
-    if (dateCol === -1 || amountCol === -1) {
-        alert('필수 컬럼(날짜, 금액)을 찾을 수 없습니다.');
+    if (dateCol === -1) {
+        alert('작성일자 컬럼을 찾을 수 없습니다.');
         return;
     }
 
@@ -96,8 +95,8 @@ function parseExcelData(workbook) {
         if (!row || row.length === 0) continue;
 
         const dateStr = row[dateCol];
-        const company = companyCol !== -1 ? (row[companyCol] || '').toString() : '';
-        let amount = row[amountCol];
+        const itemName = itemNameCol < row.length ? (row[itemNameCol] || '').toString() : '';
+        let amount = amountCol < row.length ? row[amountCol] : null;
 
         if (!dateStr || !amount) continue;
 
@@ -111,15 +110,16 @@ function parseExcelData(workbook) {
         }
         if (isNaN(amount) || amount === 0) continue;
 
-        // 카테고리 결정
-        const category = determineCategory(company);
+        // 카테고리 결정 (품목명 기반)
+        const category = determineCategory(itemName);
 
         salesData.push({
             date: date,
             year: date.getFullYear(),
             month: date.getMonth() + 1,
             week: getWeekOfMonth(date),
-            company: company,
+            company: itemName, // 품목명을 company로 저장
+            itemName: itemName, // 품목명 별도 저장
             category: category,
             amount: amount
         });
@@ -162,14 +162,14 @@ function parseDate(dateStr) {
     return null;
 }
 
-// 카테고리 결정
-function determineCategory(company) {
-    if (!company) return '기타';
+// 카테고리 결정 (품목명 또는 거래처명 기반)
+function determineCategory(text) {
+    if (!text) return '기타';
 
-    const companyLower = company.toLowerCase();
+    const textLower = text.toString().toLowerCase();
     
     for (const [category, keywords] of Object.entries(categories)) {
-        if (keywords.some(keyword => companyLower.includes(keyword.toLowerCase()))) {
+        if (keywords.some(keyword => textLower.includes(keyword.toLowerCase()))) {
             return category;
         }
     }
