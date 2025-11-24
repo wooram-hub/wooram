@@ -1,4 +1,4 @@
-# wooram1
+# wooram
 
 Cloudflare Pages로 배포되는 웹사이트 예제입니다.
 
@@ -11,7 +11,7 @@ Cloudflare Pages로 배포되는 웹사이트 예제입니다.
 1. [Cloudflare Dashboard](https://dash.cloudflare.com/)에 로그인
 2. **Workers & Pages** 메뉴로 이동
 3. **Create application** > **Pages** > **Connect to Git** 선택
-4. GitHub 저장소 권한 부여 후 `wooram-hub/wooram1` 저장소 선택
+4. GitHub 저장소 권한 부여 후 `wooram-hub/wooram` 저장소 선택
 5. 빌드 설정:
    - **Framework preset**: None
    - **Build command**: (비워두기)
