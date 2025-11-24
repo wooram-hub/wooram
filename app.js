@@ -556,7 +556,9 @@ function shareReport() {
         }
 
         const baseUrl = window.location.href.split('?')[0];
-        const url = baseUrl + '?data=' + encoded;
+        // Base64 문자열을 URL 안전하게 인코딩
+        const urlSafeEncoded = encodeURIComponent(encoded);
+        const url = baseUrl + '?data=' + urlSafeEncoded;
         
         // URL 길이 체크 (일반적으로 브라우저는 2048자 제한)
         if (url.length > 2000) {
@@ -901,20 +903,32 @@ function decodeBase64(str) {
         throw new Error('디코딩할 데이터가 없습니다.');
     }
     
-    // URL 인코딩된 경우 먼저 디코딩
+    // URL 인코딩된 경우 먼저 디코딩 (필수)
     let decodedStr = str;
     try {
-        decodedStr = decodeURIComponent(str);
+        // URL 인코딩된 Base64 문자열 디코딩
+        decodedStr = decodeURIComponent(str.replace(/\+/g, ' '));
+        // 공백을 +로 다시 변환 (URL 인코딩에서 공백으로 변환된 경우)
+        decodedStr = decodedStr.replace(/ /g, '+');
     } catch (e) {
-        // 이미 디코딩된 경우 그대로 사용
-        decodedStr = str;
+        // decodeURIComponent 실패 시, 직접 처리 시도
+        try {
+            decodedStr = decodeURIComponent(str);
+        } catch (e2) {
+            // 이미 디코딩된 경우 그대로 사용
+            decodedStr = str;
+        }
     }
     
-    // Base64 문자열 검증 (Base64는 A-Z, a-z, 0-9, +, /, = 만 포함)
+    // Base64 문자열 검증 및 정리
+    // Base64는 A-Z, a-z, 0-9, +, /, = 만 포함, 공백/줄바꿈 제거
+    decodedStr = decodedStr.replace(/\s/g, '');
+    
+    // Base64 패턴 검증
     const base64Pattern = /^[A-Za-z0-9+/=]+$/;
-    if (!base64Pattern.test(decodedStr.replace(/\s/g, ''))) {
-        // Base64가 아니면 그대로 반환 (이미 디코딩된 JSON일 수 있음)
-        return decodedStr;
+    if (!base64Pattern.test(decodedStr)) {
+        console.warn('Base64 패턴이 아닌 문자열:', decodedStr.substring(0, 50));
+        throw new Error('유효하지 않은 Base64 형식입니다.');
     }
     
     try {
@@ -924,13 +938,14 @@ function decodeBase64(str) {
         try {
             return decodeURIComponent(escape(base64Decoded));
         } catch (e) {
-            // escape가 실패하면 그대로 반환
+            // escape가 실패하면 그대로 반환 (이미 UTF-8일 수 있음)
+            console.warn('UTF-8 변환 실패, 원본 반환:', e);
             return base64Decoded;
         }
     } catch (e) {
         console.error('Base64 디코딩 오류:', e);
-        // Base64 디코딩 실패 시 원본 문자열 반환
-        return decodedStr;
+        console.error('디코딩 시도한 문자열:', decodedStr.substring(0, 100));
+        throw new Error('Base64 디코딩 실패: ' + e.message);
     }
 }
 
