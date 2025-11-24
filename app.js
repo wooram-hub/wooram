@@ -491,40 +491,129 @@ function formatCurrency(amount) {
     return '₩' + Math.round(amount).toLocaleString('ko-KR');
 }
 
+// Base64 인코딩 (한글 지원)
+function encodeBase64(str) {
+    try {
+        // UTF-8로 인코딩 후 Base64 변환
+        return btoa(unescape(encodeURIComponent(str)));
+    } catch (e) {
+        // 실패 시 encodeURIComponent 사용
+        return encodeURIComponent(str);
+    }
+}
+
 // 링크 공유
 function shareReport() {
     try {
-        // 데이터 확인 (salesData가 비어있어도 링크는 생성 가능하도록)
         const reportText = document.getElementById('reportText')?.value || '';
         const monthText = `${currentYear}년 ${currentMonth}월`;
         
+        // 월별 데이터 필터링
         const monthData = salesData.filter(d => 
             d.year === currentYear && d.month === currentMonth
         );
         
-        const data = {
-            month: monthText,
-            salesData: monthData,
-            reportText: reportText,
-            currentMonth: currentMonth,
-            currentYear: currentYear
-        };
+        // 데이터가 너무 크면 요약만 포함
+        let dataToShare;
+        
+        if (monthData.length > 100) {
+            // 데이터가 많으면 요약 정보만 포함
+            const categoryTotals = calculateCategoryTotals(monthData);
+            const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
+            
+            dataToShare = {
+                month: monthText,
+                summary: {
+                    맑은이러닝: categoryTotals['맑은이러닝'] || 0,
+                    콘텐츠: categoryTotals['콘텐츠'] || 0,
+                    위캔디오: categoryTotals['위캔디오'] || 0,
+                    합계: total
+                },
+                reportText: reportText,
+                currentMonth: currentMonth,
+                currentYear: currentYear,
+                dataCount: monthData.length
+            };
+        } else {
+            // 데이터가 적으면 전체 포함
+            dataToShare = {
+                month: monthText,
+                salesData: monthData.map(d => ({
+                    date: d.date.toISOString().split('T')[0],
+                    category: d.category,
+                    amount: d.amount,
+                    itemName: d.itemName || d.company
+                })),
+                reportText: reportText,
+                currentMonth: currentMonth,
+                currentYear: currentYear
+            };
+        }
 
-        const encoded = btoa(JSON.stringify(data));
+        // JSON 문자열화
+        let jsonString;
+        try {
+            jsonString = JSON.stringify(dataToShare);
+        } catch (e) {
+            throw new Error('데이터를 변환하는 중 오류가 발생했습니다.');
+        }
+
+        // Base64 인코딩
+        let encoded;
+        try {
+            encoded = encodeBase64(jsonString);
+        } catch (e) {
+            throw new Error('링크 인코딩 중 오류가 발생했습니다.');
+        }
+
         const baseUrl = window.location.href.split('?')[0];
         const url = baseUrl + '?data=' + encoded;
         
-        console.log('링크 생성 완료:', url);
+        // URL 길이 체크 (일반적으로 브라우저는 2048자 제한)
+        if (url.length > 2000) {
+            // URL이 너무 길면 경고 표시
+            if (confirm('링크가 너무 깁니다. 요약 정보만 포함된 링크를 생성하시겠습니까?')) {
+                // 요약 정보만으로 다시 생성
+                const categoryTotals = calculateCategoryTotals(monthData);
+                const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
+                
+                const summaryData = {
+                    month: monthText,
+                    summary: {
+                        맑은이러닝: categoryTotals['맑은이러닝'] || 0,
+                        콘텐츠: categoryTotals['콘텐츠'] || 0,
+                        위캔디오: categoryTotals['위캔디오'] || 0,
+                        합계: total
+                    },
+                    reportText: reportText.substring(0, 500), // 보고서도 제한
+                    currentMonth: currentMonth,
+                    currentYear: currentYear
+                };
+                
+                const summaryJson = JSON.stringify(summaryData);
+                const summaryEncoded = encodeBase64(summaryJson);
+                const summaryUrl = baseUrl + '?data=' + summaryEncoded;
+                
+                showShareModal(summaryUrl, monthText);
+                return;
+            } else {
+                return;
+            }
+        }
         
-        // Web Share API 지원 여부 확인 (모바일/일부 데스크톱)
-        if (navigator.share && navigator.share instanceof Function) {
+        console.log('링크 생성 완료:', url.substring(0, 100) + '...');
+        
+        // Web Share API 지원 여부 확인
+        if (navigator.share && typeof navigator.share === 'function') {
             navigator.share({
                 title: `매출 통계 보고서 - ${monthText}`,
                 text: `매출 통계 보고서를 공유합니다: ${monthText}`,
                 url: url
             }).catch((error) => {
-                console.log('공유 취소 또는 오류:', error);
-                // 취소나 오류 시 모달 표시
+                // 사용자가 취소하거나 오류 발생 시 모달 표시
+                if (error.name !== 'AbortError') {
+                    console.log('공유 오류:', error);
+                }
                 showShareModal(url, monthText);
             });
         } else {
@@ -533,7 +622,7 @@ function shareReport() {
         }
     } catch (error) {
         console.error('링크 공유 오류:', error);
-        alert('링크 생성 중 오류가 발생했습니다: ' + error.message);
+        alert('링크 생성 중 오류가 발생했습니다.\n\n오류: ' + (error.message || error.toString()) + '\n\n콘솔을 확인해주세요.');
     }
 }
 
@@ -833,6 +922,21 @@ function generateWeeklyTableHTML(monthData) {
     return tableHTML;
 }
 
+// Base64 디코딩 (한글 지원)
+function decodeBase64(str) {
+    try {
+        // Base64 디코딩 후 UTF-8로 변환
+        return decodeURIComponent(escape(atob(str)));
+    } catch (e) {
+        // 실패 시 decodeURIComponent 시도
+        try {
+            return decodeURIComponent(str);
+        } catch (e2) {
+            throw new Error('데이터 디코딩 실패');
+        }
+    }
+}
+
 // URL 파라미터에서 데이터 로드
 window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -840,20 +944,43 @@ window.addEventListener('load', () => {
     
     if (dataParam) {
         try {
-            const data = JSON.parse(atob(dataParam));
+            // Base64 디코딩
+            const decoded = decodeBase64(dataParam);
+            const data = JSON.parse(decoded);
+            
             if (data.currentMonth && data.currentYear) {
                 currentMonth = data.currentMonth;
                 currentYear = data.currentYear;
                 updateMonthDisplay();
             }
+            
             if (data.reportText) {
-                document.getElementById('reportText').value = data.reportText;
+                const reportTextArea = document.getElementById('reportText');
+                if (reportTextArea) {
+                    reportTextArea.value = data.reportText;
+                }
             }
-            if (data.salesData && salesData.length > 0) {
+            
+            // salesData가 있으면 로드
+            if (data.salesData && Array.isArray(data.salesData)) {
+                // 날짜 문자열을 Date 객체로 변환
+                data.salesData.forEach(item => {
+                    if (item.date) {
+                        item.date = new Date(item.date);
+                        item.year = item.date.getFullYear();
+                        item.month = item.date.getMonth() + 1;
+                        item.week = getWeekOfMonth(item.date);
+                    }
+                });
+                salesData = data.salesData;
                 updateDashboard();
+            } else if (data.summary) {
+                // 요약 정보만 있는 경우 메시지 표시
+                alert(`${data.month} 매출 통계 요약 정보만 포함된 링크입니다.\n\n맑은이러닝: ${formatCurrency(data.summary.맑은이러닝)}\n콘텐츠: ${formatCurrency(data.summary.콘텐츠)}\n위캔디오: ${formatCurrency(data.summary.위캔디오)}\n합계: ${formatCurrency(data.summary.합계)}`);
             }
         } catch (e) {
             console.error('데이터 로드 오류:', e);
+            alert('링크에서 데이터를 불러오는 중 오류가 발생했습니다.');
         }
     }
 });
