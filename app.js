@@ -518,204 +518,165 @@ function shareReport() {
 
 // PDF 출력
 async function exportToPDF() {
+    if (typeof html2canvas === 'undefined') {
+        alert('PDF 생성 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
     const monthText = `${currentYear}년 ${currentMonth}월`;
     const reportText = document.getElementById('reportText').value;
     
-    // PDF용 HTML 생성
+    // 데이터 확인
     const monthData = salesData.filter(d => 
         d.year === currentYear && d.month === currentMonth
     );
+    
+    if (monthData.length === 0) {
+        alert('표시할 데이터가 없습니다. 파일을 업로드해주세요.');
+        return;
+    }
+
     const categoryTotals = calculateCategoryTotals(monthData);
     const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
     
-    let pdfHTML = `
-        <!DOCTYPE html>
-        <html lang="ko">
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body {
-                    font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
-                    padding: 40px;
-                    color: #333;
-                }
-                h1 {
-                    text-align: center;
-                    font-size: 24px;
-                    margin-bottom: 10px;
-                    color: #667eea;
-                }
-                h2 {
-                    text-align: center;
-                    font-size: 18px;
-                    margin-bottom: 30px;
-                    color: #666;
-                }
-                .section {
-                    margin-bottom: 30px;
-                }
-                .section-title {
-                    font-size: 16px;
-                    font-weight: bold;
-                    margin-bottom: 15px;
-                    color: #333;
-                    border-bottom: 2px solid #667eea;
-                    padding-bottom: 5px;
-                }
-                .category-item {
-                    margin: 10px 0;
-                    padding: 8px;
-                    background: #f8f9fa;
-                    border-radius: 5px;
-                }
-                .category-item strong {
-                    color: #667eea;
-                }
-                .total {
-                    margin-top: 15px;
-                    padding: 15px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    border-radius: 8px;
-                    font-size: 18px;
-                    font-weight: bold;
-                    text-align: center;
-                }
-                .report-content {
-                    margin-top: 20px;
-                    padding: 20px;
-                    background: #f8f9fa;
-                    border-radius: 8px;
-                    white-space: pre-wrap;
-                    line-height: 1.6;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-top: 15px;
-                }
-                th, td {
-                    padding: 10px;
-                    text-align: left;
-                    border-bottom: 1px solid #ddd;
-                }
-                th {
-                    background: #667eea;
-                    color: white;
-                }
-                tr:hover {
-                    background: #f5f5f5;
-                }
-            </style>
-        </head>
-        <body>
-            <h1>📊 매출 통계 보고서</h1>
-            <h2>${monthText}</h2>
-            
-            <div class="section">
-                <div class="section-title">카테고리별 매출</div>
-                <div class="category-item">
-                    <strong>맑은이러닝:</strong> ${formatCurrency(categoryTotals['맑은이러닝'] || 0)} 
-                    (${total > 0 ? ((categoryTotals['맑은이러닝'] || 0) / total * 100).toFixed(1) : 0}%)
-                </div>
-                <div class="category-item">
-                    <strong>콘텐츠:</strong> ${formatCurrency(categoryTotals['콘텐츠'] || 0)} 
-                    (${total > 0 ? ((categoryTotals['콘텐츠'] || 0) / total * 100).toFixed(1) : 0}%)
-                </div>
-                <div class="category-item">
-                    <strong>위캔디오:</strong> ${formatCurrency(categoryTotals['위캔디오'] || 0)} 
-                    (${total > 0 ? ((categoryTotals['위캔디오'] || 0) / total * 100).toFixed(1) : 0}%)
-                </div>
-                <div class="total">합계: ${formatCurrency(total)}</div>
+    // PDF용 컨테이너 생성
+    const pdfContainer = document.createElement('div');
+    pdfContainer.style.position = 'fixed';
+    pdfContainer.style.left = '-9999px';
+    pdfContainer.style.top = '0';
+    pdfContainer.style.width = '210mm';
+    pdfContainer.style.padding = '20mm';
+    pdfContainer.style.background = 'white';
+    pdfContainer.style.fontFamily = "'Malgun Gothic', '맑은 고딕', Arial, sans-serif";
+    pdfContainer.style.color = '#333';
+    pdfContainer.style.fontSize = '12px';
+    
+    pdfContainer.innerHTML = `
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="font-size: 24px; color: #667eea; margin-bottom: 10px;">매출 통계 보고서</h1>
+            <h2 style="font-size: 18px; color: #666;">${monthText}</h2>
+        </div>
+        
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 5px;">카테고리별 매출</h3>
+            <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; border-radius: 5px;">
+                <strong style="color: #667eea;">맑은이러닝:</strong> ${formatCurrency(categoryTotals['맑은이러닝'] || 0)} 
+                (${total > 0 ? ((categoryTotals['맑은이러닝'] || 0) / total * 100).toFixed(1) : 0}%)
             </div>
+            <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; border-radius: 5px;">
+                <strong style="color: #667eea;">콘텐츠:</strong> ${formatCurrency(categoryTotals['콘텐츠'] || 0)} 
+                (${total > 0 ? ((categoryTotals['콘텐츠'] || 0) / total * 100).toFixed(1) : 0}%)
+            </div>
+            <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; border-radius: 5px;">
+                <strong style="color: #667eea;">위캔디오:</strong> ${formatCurrency(categoryTotals['위캔디오'] || 0)} 
+                (${total > 0 ? ((categoryTotals['위캔디오'] || 0) / total * 100).toFixed(1) : 0}%)
+            </div>
+            <div style="margin-top: 15px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; font-size: 18px; font-weight: bold; text-align: center;">
+                합계: ${formatCurrency(total)}
+            </div>
+        </div>
+        
+        ${generateWeeklyTableHTML(monthData)}
+        
+        ${reportText ? `
+        <div style="margin-top: 30px;">
+            <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 5px;">보고 내용</h3>
+            <div style="padding: 20px; background: #f8f9fa; border-radius: 8px; white-space: pre-wrap; line-height: 1.6;">
+                ${reportText.replace(/\n/g, '<br>')}
+            </div>
+        </div>
+        ` : ''}
     `;
     
-    // 주차별 상세 테이블 추가
-    const weeklyData = calculateWeeklyData(monthData);
-    const weeks = Object.keys(weeklyData).sort((a, b) => a - b);
-    if (weeks.length > 0) {
-        pdfHTML += `
-            <div class="section">
-                <div class="section-title">주차별 상세 내역</div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>주차</th>
-                            <th>맑은이러닝</th>
-                            <th>콘텐츠</th>
-                            <th>위캔디오</th>
-                            <th>합계</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-        weeks.forEach(week => {
-            const weekData = weeklyData[week];
-            const weekTotal = (weekData['맑은이러닝'] || 0) + (weekData['콘텐츠'] || 0) + (weekData['위캔디오'] || 0);
-            pdfHTML += `
-                        <tr>
-                            <td><strong>${week}주차</strong></td>
-                            <td>${formatCurrency(weekData['맑은이러닝'] || 0)}</td>
-                            <td>${formatCurrency(weekData['콘텐츠'] || 0)}</td>
-                            <td>${formatCurrency(weekData['위캔디오'] || 0)}</td>
-                            <td><strong>${formatCurrency(weekTotal)}</strong></td>
-                        </tr>
-            `;
-        });
-        pdfHTML += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
-    
-    // 보고서 내용 추가
-    if (reportText) {
-        pdfHTML += `
-            <div class="section">
-                <div class="section-title">보고 내용</div>
-                <div class="report-content">${reportText.replace(/\n/g, '<br>')}</div>
-            </div>
-        `;
-    }
-    
-    pdfHTML += `
-        </body>
-        </html>
-    `;
-    
-    // 임시 div 생성
-    const printWindow = document.createElement('div');
-    printWindow.innerHTML = pdfHTML;
-    printWindow.style.position = 'absolute';
-    printWindow.style.left = '-9999px';
-    document.body.appendChild(printWindow);
-    
-    // PDF 생성 옵션
-    const opt = {
-        margin: [10, 10, 10, 10],
-        filename: `매출통계_${currentYear}년${currentMonth}월.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-            scale: 2,
-            useCORS: true,
-            letterRendering: true
-        },
-        jsPDF: { 
-            unit: 'mm', 
-            format: 'a4', 
-            orientation: 'portrait' 
-        }
-    };
+    document.body.appendChild(pdfContainer);
     
     try {
-        await html2pdf().set(opt).from(printWindow).save();
-        document.body.removeChild(printWindow);
+        // html2canvas로 이미지 생성
+        const canvas = await html2canvas(pdfContainer, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+        });
+        
+        // jsPDF로 PDF 생성
+        const { jsPDF } = window.jspdf;
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        
+        const imgWidth = 210; // A4 width in mm
+        const pageHeight = 297; // A4 height in mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        
+        let position = 0;
+        
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+        
+        while (heightLeft >= 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+        }
+        
+        pdf.save(`매출통계_${currentYear}년${currentMonth}월.pdf`);
+        
+        document.body.removeChild(pdfContainer);
     } catch (error) {
         console.error('PDF 생성 오류:', error);
-        alert('PDF 생성 중 오류가 발생했습니다.');
-        document.body.removeChild(printWindow);
+        alert('PDF 생성 중 오류가 발생했습니다: ' + error.message);
+        if (document.body.contains(pdfContainer)) {
+            document.body.removeChild(pdfContainer);
+        }
     }
+}
+
+// 주차별 테이블 HTML 생성
+function generateWeeklyTableHTML(monthData) {
+    const weeklyData = calculateWeeklyData(monthData);
+    const weeks = Object.keys(weeklyData).sort((a, b) => a - b);
+    
+    if (weeks.length === 0) return '';
+    
+    let tableHTML = `
+        <div style="margin-top: 30px;">
+            <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 5px;">주차별 상세 내역</h3>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                <thead>
+                    <tr style="background: #667eea; color: white;">
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">주차</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">맑은이러닝</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">콘텐츠</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">위캔디오</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">합계</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    weeks.forEach(week => {
+        const weekData = weeklyData[week];
+        const weekTotal = (weekData['맑은이러닝'] || 0) + (weekData['콘텐츠'] || 0) + (weekData['위캔디오'] || 0);
+        tableHTML += `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #ddd;"><strong>${week}주차</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #ddd;">${formatCurrency(weekData['맑은이러닝'] || 0)}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #ddd;">${formatCurrency(weekData['콘텐츠'] || 0)}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #ddd;">${formatCurrency(weekData['위캔디오'] || 0)}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #ddd;"><strong>${formatCurrency(weekTotal)}</strong></td>
+                    </tr>
+        `;
+    });
+    
+    tableHTML += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    return tableHTML;
 }
 
 // URL 파라미터에서 데이터 로드
