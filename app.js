@@ -71,23 +71,15 @@ function parseExcelData(workbook) {
 
     const headers = jsonData[headerRow];
     
-    // 컬럼 인덱스 설정
-    // 작성일자 컬럼 찾기
-    const dateCol = headers.findIndex(h => 
-        typeof h === 'string' && 
-        (h.includes('작성일자') || h.includes('거래일자') || h.includes('발행일자') || h.includes('일자') || h.includes('날짜'))
-    );
+    // 컬럼 인덱스 설정 (고정)
+    // A열 = 1번째 열 (인덱스 0) - 작성일자
+    const dateCol = 0;
     
     // P열 = 16번째 열 (인덱스 15) - 금액
     const amountCol = 15;
     
     // AA열 = 27번째 열 (인덱스 26) - 품목명
     const itemNameCol = 26;
-
-    if (dateCol === -1) {
-        alert('작성일자 컬럼을 찾을 수 없습니다.');
-        return;
-    }
 
     // 데이터 파싱
     for (let i = headerRow + 1; i < jsonData.length; i++) {
