@@ -554,7 +554,15 @@ function shareReport() {
         // URL 길이 체크 (일반적으로 브라우저는 2048자 제한)
         if (url.length > 2000) {
             // URL이 너무 길면 경고 표시하고 계속 진행 (전체 데이터 포함)
-            if (!confirm(`링크가 ${url.length}자로 매우 깁니다.\n일부 브라우저에서 문제가 발생할 수 있습니다.\n그래도 계속하시겠습니까?`)) {
+            const continueLink = confirm(
+                `⚠️ 링크 길이 안내\n\n` +
+                `생성된 링크가 ${url.length.toLocaleString('ko-KR')}자입니다.\n\n` +
+                `일반적으로 링크 공유에는 문제가 없지만,\n` +
+                `일부 메신저나 이메일에서는 링크가 잘릴 수 있습니다.\n\n` +
+                `전체 대시보드 데이터가 포함된 링크를 생성하시겠습니까?`
+            );
+            
+            if (!continueLink) {
                 return;
             }
         }
