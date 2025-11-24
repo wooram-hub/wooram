@@ -890,15 +890,27 @@ function generateWeeklyTableHTML(monthData) {
 
 // Base64 디코딩 (한글 지원)
 function decodeBase64(str) {
+    if (!str || str.length === 0) {
+        throw new Error('디코딩할 데이터가 없습니다.');
+    }
+    
     try {
         // Base64 디코딩 후 UTF-8로 변환
-        return decodeURIComponent(escape(atob(str)));
+        const decoded = atob(str);
+        return decodeURIComponent(escape(decoded));
     } catch (e) {
-        // 실패 시 decodeURIComponent 시도
+        console.error('Base64 디코딩 오류:', e);
+        // 실패 시 URL 디코딩된 상태인지 확인
         try {
+            // 이미 디코딩된 경우
             return decodeURIComponent(str);
         } catch (e2) {
-            throw new Error('데이터 디코딩 실패');
+            // 직접 디코딩 시도
+            try {
+                return decodeURIComponent(escape(atob(decodeURIComponent(str))));
+            } catch (e3) {
+                throw new Error('데이터 디코딩 실패: ' + e.message);
+            }
         }
     }
 }
@@ -908,31 +920,78 @@ window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const dataParam = urlParams.get('data');
     
-    if (dataParam) {
+    if (!dataParam) {
+        return;
+    }
+    
+    try {
+        console.log('링크에서 데이터 로드 시작...');
+        
+        // Base64 디코딩
+        let decoded;
         try {
-            // Base64 디코딩
-            const decoded = decodeBase64(dataParam);
-            const data = JSON.parse(decoded);
-            
-            if (data.currentMonth && data.currentYear) {
-                currentMonth = data.currentMonth;
-                currentYear = data.currentYear;
-                updateMonthDisplay();
+            decoded = decodeBase64(dataParam);
+            console.log('디코딩 성공, 데이터 길이:', decoded.length);
+        } catch (decodeError) {
+            console.error('디코딩 오류:', decodeError);
+            throw new Error('링크 데이터를 디코딩할 수 없습니다.\n\n오류: ' + decodeError.message);
+        }
+        
+        // JSON 파싱
+        let data;
+        try {
+            data = JSON.parse(decoded);
+            console.log('JSON 파싱 성공:', Object.keys(data));
+        } catch (parseError) {
+            console.error('JSON 파싱 오류:', parseError);
+            throw new Error('링크 데이터를 읽을 수 없습니다.\n\n오류: ' + parseError.message);
+        }
+        
+        // 월 정보 설정
+        if (data.currentMonth && data.currentYear) {
+            currentMonth = parseInt(data.currentMonth);
+            currentYear = parseInt(data.currentYear);
+            updateMonthDisplay();
+            console.log('월 정보 설정:', currentYear, '년', currentMonth, '월');
+        }
+        
+        // 보고서 텍스트 설정
+        if (data.reportText) {
+            const reportTextArea = document.getElementById('reportText');
+            if (reportTextArea) {
+                reportTextArea.value = data.reportText;
             }
+        }
+        
+        // salesData가 있으면 로드
+        if (data.salesData && Array.isArray(data.salesData)) {
+            console.log('매출 데이터 로드 중, 개수:', data.salesData.length);
             
-            if (data.reportText) {
-                const reportTextArea = document.getElementById('reportText');
-                if (reportTextArea) {
-                    reportTextArea.value = data.reportText;
-                }
-            }
+            // 날짜 문자열을 Date 객체로 변환
+            const loadedData = [];
             
-            // salesData가 있으면 로드
-            if (data.salesData && Array.isArray(data.salesData)) {
-                // 날짜 문자열을 Date 객체로 변환
-                const loadedData = data.salesData.map(item => {
-                    const date = new Date(item.date);
-                    return {
+            for (let i = 0; i < data.salesData.length; i++) {
+                const item = data.salesData[i];
+                
+                try {
+                    // 날짜 파싱
+                    let date;
+                    if (item.date instanceof String || typeof item.date === 'string') {
+                        date = new Date(item.date);
+                    } else if (item.date) {
+                        date = new Date(item.date);
+                    } else {
+                        console.warn('날짜 정보가 없는 항목:', item);
+                        continue;
+                    }
+                    
+                    // 유효한 날짜인지 확인
+                    if (isNaN(date.getTime())) {
+                        console.warn('유효하지 않은 날짜:', item.date);
+                        continue;
+                    }
+                    
+                    loadedData.push({
                         date: date,
                         year: date.getFullYear(),
                         month: date.getMonth() + 1,
@@ -940,10 +999,17 @@ window.addEventListener('load', () => {
                         company: item.itemName || item.company || '',
                         itemName: item.itemName || item.company || '',
                         category: item.category || '기타',
-                        amount: item.amount || 0
-                    };
-                });
-                
+                        amount: parseFloat(item.amount) || 0
+                    });
+                } catch (itemError) {
+                    console.warn('항목 로드 오류:', item, itemError);
+                    continue;
+                }
+            }
+            
+            console.log('로드된 항목 수:', loadedData.length);
+            
+            if (loadedData.length > 0) {
                 // 기존 데이터에 추가 (같은 월 데이터가 있으면 교체)
                 salesData = salesData.filter(d => 
                     !(d.year === currentYear && d.month === currentMonth)
@@ -951,31 +1017,49 @@ window.addEventListener('load', () => {
                 salesData = salesData.concat(loadedData);
                 
                 updateDashboard();
-            } else if (data.summary) {
-                // 요약 정보만 있는 경우 (구버전 링크 호환성)
-                const categoryTotals = {
-                    '맑은이러닝': data.summary.맑은이러닝 || 0,
-                    '콘텐츠': data.summary.콘텐츠 || 0,
-                    '위캔디오': data.summary.위캔디오 || 0
-                };
-                
-                // 요약 정보를 이용해 대시보드 업데이트 (데이터는 없지만 요약은 표시)
-                const total = data.summary.합계 || 0;
-                
-                // 요약 정보 표시
-                document.getElementById('currentMonthTotal').textContent = formatCurrency(total);
-                updateSummaryCards(categoryTotals, total);
-                
-                // 주차별 테이블은 비우기
-                document.getElementById('weeklyTableBody').innerHTML = 
-                    '<tr><td colspan="5" class="no-data">상세 데이터가 포함되지 않은 링크입니다</td></tr>';
-                
-                alert(`${data.month} 매출 통계 요약 정보입니다.\n\n맑은이러닝: ${formatCurrency(data.summary.맑은이러닝)}\n콘텐츠: ${formatCurrency(data.summary.콘텐츠)}\n위캔디오: ${formatCurrency(data.summary.위캔디오)}\n합계: ${formatCurrency(data.summary.합계)}`);
+                console.log('대시보드 업데이트 완료');
+            } else {
+                throw new Error('로드된 데이터가 없습니다.');
             }
-        } catch (e) {
-            console.error('데이터 로드 오류:', e);
-            alert('링크에서 데이터를 불러오는 중 오류가 발생했습니다.');
+        } else if (data.summary) {
+            // 요약 정보만 있는 경우 (구버전 링크 호환성)
+            console.log('요약 정보만 포함된 링크');
+            const categoryTotals = {
+                '맑은이러닝': data.summary.맑은이러닝 || 0,
+                '콘텐츠': data.summary.콘텐츠 || 0,
+                '위캔디오': data.summary.위캔디오 || 0
+            };
+            
+            // 요약 정보를 이용해 대시보드 업데이트
+            const total = data.summary.합계 || 0;
+            
+            // 요약 정보 표시
+            document.getElementById('currentMonthTotal').textContent = formatCurrency(total);
+            updateSummaryCards(categoryTotals, total);
+            
+            // 주차별 테이블은 비우기
+            document.getElementById('weeklyTableBody').innerHTML = 
+                '<tr><td colspan="5" class="no-data">상세 데이터가 포함되지 않은 링크입니다</td></tr>';
+            
+            alert(`${data.month || monthText} 매출 통계 요약 정보입니다.\n\n맑은이러닝: ${formatCurrency(data.summary.맑은이러닝)}\n콘텐츠: ${formatCurrency(data.summary.콘텐츠)}\n위캔디오: ${formatCurrency(data.summary.위캔디오)}\n합계: ${formatCurrency(data.summary.합계)}`);
+        } else {
+            throw new Error('링크에 매출 데이터가 포함되어 있지 않습니다.');
         }
+    } catch (e) {
+        console.error('데이터 로드 전체 오류:', e);
+        console.error('오류 스택:', e.stack);
+        
+        let errorMessage = '링크에서 데이터를 불러오는 중 오류가 발생했습니다.\n\n';
+        
+        if (e.message) {
+            errorMessage += '오류 내용: ' + e.message;
+        } else {
+            errorMessage += '알 수 없는 오류가 발생했습니다.';
+        }
+        
+        errorMessage += '\n\n브라우저 콘솔(F12)에서 자세한 오류 정보를 확인할 수 있습니다.';
+        
+        alert(errorMessage);
     }
 });
 
