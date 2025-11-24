@@ -3,182 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wooram 예제 페이지</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 40px;
-            max-width: 600px;
-            width: 100%;
-            text-align: center;
-            animation: fadeIn 0.6s ease-in;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        h1 {
-            color: #667eea;
-            margin-bottom: 20px;
-            font-size: 2.5em;
-        }
-
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 1.2em;
-        }
-
-        .card {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border-radius: 15px;
-            padding: 30px;
-            margin: 20px 0;
-        }
-
-        .card h2 {
-            color: #764ba2;
-            margin-bottom: 15px;
-        }
-
-        .card p {
-            color: #555;
-            line-height: 1.6;
-        }
-
-        .button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 50px;
-            font-size: 1.1em;
-            cursor: pointer;
-            margin: 10px;
-            transition: transform 0.3s, box-shadow 0.3s;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.6);
-        }
-
-        .button:active {
-            transform: translateY(-1px);
-        }
-
-        .info {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            color: #666;
-        }
-
-        .badge {
-            display: inline-block;
-            background: #667eea;
-            color: white;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            margin: 5px;
-        }
-    </style>
+    <title>매출 통계 대시보드</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Wooram</h1>
-        <p class="subtitle">Cloudflare Pages로 배포된 예제 페이지입니다</p>
-        
-        <div class="card">
-            <h2>환영합니다! 👋</h2>
-            <p>이 페이지는 GitHub와 Cloudflare Pages를 연동하여 배포되었습니다.</p>
-        </div>
+        <header>
+            <h1>📊 매출 통계 대시보드</h1>
+            <div class="header-actions">
+                <button id="uploadBtn" class="btn btn-primary">📁 파일 업로드</button>
+                <button id="shareBtn" class="btn btn-secondary">🔗 링크 공유</button>
+                <button id="pdfBtn" class="btn btn-secondary">📄 PDF 출력</button>
+            </div>
+        </header>
 
-        <div class="card">
-            <h2>기능 소개</h2>
-            <p>현재 시간: <span id="time"></span></p>
-            <button class="button" onclick="showAlert()">알림 보기</button>
-            <button class="button" onclick="changeColor()">색상 변경</button>
-        </div>
+        <input type="file" id="fileInput" accept=".xls,.xlsx" style="display: none;">
 
-        <div class="info">
-            <p><strong>기술 스택:</strong></p>
-            <span class="badge">HTML5</span>
-            <span class="badge">CSS3</span>
-            <span class="badge">JavaScript</span>
-            <span class="badge">Cloudflare Pages</span>
-            <span class="badge">GitHub</span>
+        <div class="dashboard">
+            <!-- 월별 선택 및 비교 섹션 -->
+            <section class="month-selector">
+                <div class="month-controls">
+                    <button id="prevMonth" class="btn-icon">◀</button>
+                    <h2 id="currentMonth">2024년 1월</h2>
+                    <button id="nextMonth" class="btn-icon">▶</button>
+                </div>
+                <div class="comparison-cards">
+                    <div class="comparison-card">
+                        <span class="label">전월</span>
+                        <span id="prevMonthTotal" class="amount">-</span>
+                        <span id="prevMonthChange" class="change"></span>
+                    </div>
+                    <div class="comparison-card current">
+                        <span class="label">당월</span>
+                        <span id="currentMonthTotal" class="amount">-</span>
+                        <span class="change"></span>
+                    </div>
+                    <div class="comparison-card">
+                        <span class="label">다음달</span>
+                        <span id="nextMonthTotal" class="amount">-</span>
+                        <span id="nextMonthChange" class="change"></span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 카테고리별 매출 요약 -->
+            <section class="summary-cards">
+                <div class="summary-card category-1">
+                    <h3>맑은이러닝</h3>
+                    <div class="amount-large" id="category1Total">₩0</div>
+                    <div class="percentage" id="category1Percent">0%</div>
+                </div>
+                <div class="summary-card category-2">
+                    <h3>콘텐츠</h3>
+                    <div class="amount-large" id="category2Total">₩0</div>
+                    <div class="percentage" id="category2Percent">0%</div>
+                </div>
+                <div class="summary-card category-3">
+                    <h3>위캔디오</h3>
+                    <div class="amount-large" id="category3Total">₩0</div>
+                    <div class="percentage" id="category3Percent">0%</div>
+                </div>
+            </section>
+
+            <!-- 주차별 매출 차트 -->
+            <section class="chart-section">
+                <h3>주차별 매출 현황</h3>
+                <div class="chart-container">
+                    <canvas id="weeklyChart"></canvas>
+                </div>
+            </section>
+
+            <!-- 카테고리별 매출 차트 -->
+            <section class="chart-section">
+                <h3>카테고리별 매출 분포</h3>
+                <div class="chart-container">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+            </section>
+
+            <!-- 주차별 상세 테이블 -->
+            <section class="table-section">
+                <h3>주차별 상세 내역</h3>
+                <div class="table-container">
+                    <table id="weeklyTable">
+                        <thead>
+                            <tr>
+                                <th>주차</th>
+                                <th>맑은이러닝</th>
+                                <th>콘텐츠</th>
+                                <th>위캔디오</th>
+                                <th>합계</th>
+                            </tr>
+                        </thead>
+                        <tbody id="weeklyTableBody">
+                            <tr>
+                                <td colspan="5" class="no-data">데이터를 업로드해주세요</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 보고서 작성 섹션 -->
+            <section class="report-section">
+                <h3>📝 보고서 작성</h3>
+                <textarea 
+                    id="reportText" 
+                    placeholder="이번 달 매출에 대한 보고 내용을 작성해주세요..."
+                    rows="8"
+                ></textarea>
+            </section>
         </div>
     </div>
 
-    <script>
-        // 현재 시간 표시
-        function updateTime() {
-            const now = new Date();
-            const timeString = now.toLocaleString('ko-KR', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-            document.getElementById('time').textContent = timeString;
-        }
-
-        // 시간 업데이트
-        updateTime();
-        setInterval(updateTime, 1000);
-
-        // 알림 표시
-        function showAlert() {
-            alert('안녕하세요! 🎉\n이것은 JavaScript로 만든 알림입니다.');
-        }
-
-        // 배경색 변경
-        let colorIndex = 0;
-        const colors = [
-            'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-            'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-            'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-            'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
-        ];
-
-        function changeColor() {
-            colorIndex = (colorIndex + 1) % colors.length;
-            document.body.style.background = colors[colorIndex];
-        }
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
 
