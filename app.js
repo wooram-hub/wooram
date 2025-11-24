@@ -969,11 +969,23 @@ window.addEventListener('load', () => {
             // Base64 디코딩
             let decoded;
             try {
+                console.log('디코딩 시작, 입력 데이터 길이:', dataParam.length);
+                console.log('입력 데이터 처음 100자:', dataParam.substring(0, 100));
+                
                 decoded = decodeBase64(dataParam);
+                
                 console.log('디코딩 성공, 데이터 길이:', decoded.length);
                 console.log('디코딩된 데이터 처음 200자:', decoded.substring(0, 200));
+                
+                // JSON 형식인지 확인
+                const trimmed = decoded.trim();
+                if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+                    throw new Error('디코딩된 데이터가 JSON 형식이 아닙니다. 첫 글자: ' + trimmed.substring(0, 10));
+                }
             } catch (decodeError) {
                 console.error('디코딩 오류:', decodeError);
+                console.error('오류 이름:', decodeError.name);
+                console.error('오류 메시지:', decodeError.message);
                 console.error('오류 스택:', decodeError.stack);
                 alert('링크 데이터를 디코딩할 수 없습니다.\n\n오류: ' + decodeError.message + '\n\n브라우저 콘솔(F12)에서 자세한 정보를 확인하세요.');
                 return;
